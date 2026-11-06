@@ -1,0 +1,434 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Simple Drive Console</title>
+<meta name="description" content="A small demo page for the Simple Drive API: store and retrieve blobs and watch each request travel through the service.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #eef1f4;
+    --surface: #ffffff;
+    --ink: #17202e;
+    --muted: #5d6879;
+    --line: #cfd6df;
+    --track: #b9c3cf;
+    --cobalt: #2747c9;
+    --ok: #17845a;
+    --fail: #c23a2f;
+    --code-bg: #f6f8fa;
+    --sans: "Familjen Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #11161f; --surface: #18202b; --ink: #e6ebf2; --muted: #9aa6b6;
+      --line: #2b3646; --track: #3a4759; --cobalt: #7d97ff; --ok: #3fc28a;
+      --fail: #ff7a6e; --code-bg: #0d1219;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.5 var(--sans);
+  }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 16px; }
+  :focus-visible { outline: 2px solid var(--cobalt); outline-offset: 2px; }
+  a { color: var(--cobalt); font-weight: 600; }
+
+  /* Header */
+  header { padding: 28px 0 8px; display: flex; flex-wrap: wrap; gap: 16px 32px; align-items: flex-end; justify-content: space-between; }
+  .brand h1 { margin: 0; font-size: 32px; line-height: 1.1; font-weight: 700; letter-spacing: -0.02em; }
+  .brand p { margin: 4px 0 0; color: var(--muted); max-width: 52ch; }
+  .token { display: grid; gap: 4px; min-width: min(100%, 360px); }
+  .token label { font-size: 14px; color: var(--muted); }
+  .token-row { display: flex; gap: 8px; }
+
+  input[type=text], input[type=password] {
+    width: 100%; font: 15px var(--mono); color: var(--ink);
+    background: var(--surface); border: 1px solid var(--line); border-radius: 6px;
+    padding: 9px 11px;
+  }
+  button {
+    font: 600 15px var(--sans); border-radius: 6px; padding: 9px 16px; cursor: pointer;
+    border: 1px solid var(--cobalt); background: var(--cobalt); color: #fff; white-space: nowrap;
+  }
+  button.quiet { background: transparent; color: var(--cobalt); }
+  button:disabled { opacity: .5; cursor: progress; }
+
+  /* The request line: the one memorable element */
+  .line-section { margin: 28px 0 8px; }
+  .line-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .line-head h2 { margin: 0; font-size: 20px; font-weight: 600; }
+  .verdict { font: 500 15px var(--mono); color: var(--muted); }
+  .verdict.ok { color: var(--ok); }
+  .verdict.fail { color: var(--fail); }
+
+  ol.stations {
+    list-style: none; margin: 18px 0 0; padding: 0;
+    display: grid; grid-template-columns: repeat(6, 1fr); position: relative;
+  }
+  ol.stations::before {
+    content: ""; position: absolute; left: 8.33%; right: 8.33%; top: 15px;
+    height: 4px; border-radius: 2px; background: var(--track);
+  }
+  .progress {
+    position: absolute; left: 8.33%; top: 15px; height: 4px; border-radius: 2px;
+    width: 0; background: var(--ok); transition: width .9s ease;
+  }
+  .progress.fail { background: var(--fail); }
+  .station { position: relative; text-align: center; padding: 0 6px; }
+  .dot {
+    width: 34px; height: 34px; margin: 0 auto; border-radius: 50%;
+    background: var(--surface); border: 3px solid var(--track); position: relative; z-index: 1;
+    display: grid; place-items: center; font: 600 14px var(--mono); color: var(--muted);
+    transition: background .2s, border-color .2s, color .2s;
+  }
+  .station.ok .dot { border-color: var(--ok); background: var(--ok); color: #fff; }
+  .station.fail .dot { border-color: var(--fail); background: var(--fail); color: #fff; }
+  .station.skip { opacity: .45; }
+  .station h3 { margin: 10px 0 2px; font-size: 15px; font-weight: 600; }
+  .station p { margin: 0; font-size: 13px; line-height: 1.35; color: var(--muted); }
+  .station .note { display: block; margin-top: 6px; font: 12px/1.35 var(--mono); color: var(--fail); }
+
+  /* Actions */
+  .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 0; margin-top: 32px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+  .panel { padding: 22px 24px; }
+  .panel + .panel { border-left: 1px solid var(--line); }
+  .panel h2 { margin: 0 0 4px; font-size: 20px; font-weight: 600; }
+  .panel > p { margin: 0 0 16px; color: var(--muted); font-size: 15px; }
+  .field { display: grid; gap: 4px; margin-bottom: 12px; }
+  .field label { font-size: 14px; color: var(--muted); }
+  .drop {
+    border: 1.5px dashed var(--track); border-radius: 8px; padding: 18px; text-align: center;
+    color: var(--muted); cursor: pointer; font-size: 15px;
+  }
+  .drop.has-file { border-style: solid; border-color: var(--cobalt); color: var(--ink); }
+  .drop input { display: none; }
+  .result { margin-top: 16px; font-size: 15px; }
+  .result dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 16px; margin: 0; }
+  .result dt { color: var(--muted); }
+  .result dd { margin: 0; font-family: var(--mono); font-size: 14px; word-break: break-all; }
+  .preview { margin-top: 12px; }
+  .preview img { max-width: 100%; max-height: 240px; border-radius: 6px; border: 1px solid var(--line); }
+  .preview pre { max-height: 200px; overflow: auto; }
+  .error { color: var(--fail); }
+
+  /* Raw HTTP */
+  .raw { margin: 32px 0 48px; }
+  .raw h2 { margin: 0 0 4px; font-size: 20px; font-weight: 600; }
+  .raw > p { margin: 0 0 12px; color: var(--muted); font-size: 15px; }
+  .raw-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .raw-grid h3 { margin: 0 0 6px; font-size: 14px; font-weight: 600; color: var(--muted); }
+  pre {
+    margin: 0; padding: 14px; background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+    font: 13px/1.55 var(--mono); white-space: pre-wrap; word-break: break-all; min-height: 120px; color: var(--ink);
+  }
+
+  @media (max-width: 820px) {
+    ol.stations { grid-template-columns: 1fr; gap: 14px; }
+    ol.stations::before { left: 15px; right: auto; top: 17px; bottom: 17px; width: 4px; height: auto; }
+    .progress { left: 15px; top: 17px; width: 4px !important; height: 0; transition: height .9s ease; }
+    .station { display: grid; grid-template-columns: 34px 1fr; gap: 0 12px; text-align: left; padding: 0; }
+    .station .dot { margin: 0; grid-row: span 3; }
+    .station h3 { margin: 5px 0 2px; }
+    .actions, .raw-grid { grid-template-columns: 1fr; }
+    .panel + .panel { border-left: 0; border-top: 1px solid var(--line); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .progress, .dot { transition: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <h1>Simple Drive</h1>
+      <p>Store a file, fetch it back, and watch how each request moves through the service.</p>
+    </div>
+    <div class="token">
+      <label for="token">API token</label>
+      <div class="token-row">
+        <input id="token" type="password" autocomplete="off" spellcheck="false" placeholder="Paste the token from api_tokens:create">
+        <button class="quiet" type="button" id="toggle-token" aria-pressed="false">Show</button>
+      </div>
+    </div>
+  </header>
+
+  <section class="line-section" aria-labelledby="line-title">
+    <div class="line-head">
+      <h2 id="line-title">Request path</h2>
+      <span class="verdict" id="verdict" role="status">Send a request to see its path.</span>
+    </div>
+    <ol class="stations" id="stations">
+      <div class="progress" id="progress" aria-hidden="true"></div>
+      <li class="station" data-step="request"><div class="dot">1</div><h3>Request</h3><p>JSON sent to the API</p></li>
+      <li class="station" data-step="auth"><div class="dot">2</div><h3>Token check</h3><p>Bearer token is verified</p></li>
+      <li class="station" data-step="validate"><div class="dot">3</div><h3>Validation</h3><p>id and Base64 data are checked</p></li>
+      <li class="station" data-step="metadata"><div class="dot">4</div><h3>Metadata</h3><p>blobs table: id, size, backend, time</p></li>
+      <li class="station" data-step="storage"><div class="dot">5</div><h3>Storage</h3><p>Database, local disk, S3 or FTP</p></li>
+      <li class="station" data-step="response"><div class="dot">6</div><h3>Response</h3><p>JSON returned to the caller</p></li>
+    </ol>
+  </section>
+
+  <section class="actions">
+    <div class="panel">
+      <h2>Store a file</h2>
+      <p>The file is Base64-encoded in your browser and sent to <code>POST /v1/blobs</code>.</p>
+      <form id="store-form">
+        <div class="field">
+          <label class="drop" id="drop">
+            <input type="file" id="file">
+            <span id="drop-text">Choose a file or drop it here</span>
+          </label>
+        </div>
+        <div class="field">
+          <label for="store-id">Id</label>
+          <input type="text" id="store-id" spellcheck="false" placeholder="e.g. photos/cat.png">
+        </div>
+        <button type="submit" id="store-btn">Store file</button>
+      </form>
+      <div class="result" id="store-result" aria-live="polite"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Retrieve a file</h2>
+      <p>Fetches the blob from <code>GET /v1/blobs/:id</code> and decodes it.</p>
+      <form id="get-form">
+        <div class="field">
+          <label for="get-id">Id</label>
+          <input type="text" id="get-id" spellcheck="false" placeholder="e.g. hello.txt">
+        </div>
+        <button type="submit" id="get-btn">Retrieve file</button>
+      </form>
+      <div class="result" id="get-result" aria-live="polite"></div>
+    </div>
+  </section>
+
+  <section class="raw" aria-labelledby="raw-title">
+    <h2 id="raw-title">Raw exchange</h2>
+    <p>Exactly what the browser sent and what the API answered. Long Base64 values are shortened.</p>
+    <div class="raw-grid">
+      <div><h3>Request</h3><pre id="raw-req">Nothing sent yet.</pre></div>
+      <div><h3>Response</h3><pre id="raw-res">Nothing received yet.</pre></div>
+    </div>
+  </section>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const STEPS = ["request", "auth", "validate", "metadata", "storage", "response"];
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // Token: remembered in this browser only, for convenience.
+  const tokenInput = $("token");
+  try { tokenInput.value = localStorage.getItem("simpleDriveToken") || ""; } catch (_) {}
+  tokenInput.addEventListener("input", () => {
+    try { localStorage.setItem("simpleDriveToken", tokenInput.value.trim()); } catch (_) {}
+  });
+  $("toggle-token").addEventListener("click", (e) => {
+    const show = tokenInput.type === "password";
+    tokenInput.type = show ? "text" : "password";
+    e.currentTarget.textContent = show ? "Hide" : "Show";
+    e.currentTarget.setAttribute("aria-pressed", String(show));
+  });
+
+  // Which station failed, judged from the HTTP status and error code.
+  function failedStep(status, body) {
+    if (status === 0) return "request";
+    if (status === 401) return "auth";
+    if (status === 400 || status === 422) return "validate";
+    if (status === 404 || status === 409) return "metadata";
+    if (status >= 500) return "storage";
+    return null;
+  }
+
+  const notes = {
+    request: "Could not reach the server. Is bin/rails server running?",
+    auth: "Missing or unknown token.",
+    validate: "The id or data was rejected.",
+    metadata: "",
+    storage: "The storage backend failed.",
+  };
+
+  let timers = [];
+  function paintPath(status, body) {
+    timers.forEach(clearTimeout); timers = [];
+    const failAt = failedStep(status, body);
+    const lastIndex = failAt ? STEPS.indexOf(failAt) : STEPS.length - 1;
+    const stations = [...document.querySelectorAll(".station")];
+    stations.forEach((s) => { s.classList.remove("ok", "fail", "skip"); s.querySelector(".note")?.remove(); });
+
+    const progress = $("progress");
+    progress.classList.toggle("fail", !!failAt);
+    const vertical = window.matchMedia("(max-width: 820px)").matches;
+    const fraction = lastIndex / (STEPS.length - 1);
+    progress.style.width = vertical ? "" : `calc(${fraction} * 83.34%)`;
+    progress.style.height = vertical ? `calc(${fraction} * (100% - 34px))` : "";
+
+    const delay = reduceMotion ? 0 : 150;
+    stations.forEach((s, i) => {
+      timers.push(setTimeout(() => {
+        if (i < lastIndex || (i === lastIndex && !failAt)) s.classList.add("ok");
+        else if (i === lastIndex) {
+          s.classList.add("fail");
+          const msg = (body && body.message) || notes[failAt];
+          if (msg) { const n = document.createElement("span"); n.className = "note"; n.textContent = msg; s.append(n); }
+        } else s.classList.add("skip");
+      }, i * delay));
+    });
+
+    const verdict = $("verdict");
+    verdict.className = "verdict " + (failAt ? "fail" : "ok");
+    verdict.textContent = status === 0 ? "No response" : `${status} ${body && body.error ? body.error : "OK"}`;
+  }
+
+  function shorten(value) {
+    return typeof value === "string" && value.length > 120 ? value.slice(0, 60) + `… (${value.length} chars)` : value;
+  }
+  function pretty(obj) {
+    if (obj == null) return "";
+    const copy = Array.isArray(obj) ? obj : Object.fromEntries(Object.entries(obj).map(([k, v]) => [k, shorten(v)]));
+    return JSON.stringify(copy, null, 2);
+  }
+
+  async function call(method, path, payload) {
+    const token = tokenInput.value.trim();
+    const headers = { "Accept": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    if (payload) headers["Content-Type"] = "application/json";
+
+    const shownHeaders = { ...headers };
+    if (shownHeaders.Authorization) shownHeaders.Authorization = "Bearer " + token.slice(0, 6) + "…";
+    $("raw-req").textContent =
+      `${method} ${path}\n` +
+      Object.entries(shownHeaders).map(([k, v]) => `${k}: ${v}`).join("\n") +
+      (payload ? `\n\n${pretty(payload)}` : "");
+
+    let status = 0, body = null;
+    try {
+      const res = await fetch(path, { method, headers, body: payload ? JSON.stringify(payload) : undefined });
+      status = res.status;
+      const text = await res.text();
+      try { body = JSON.parse(text); } catch (_) { body = text ? { message: text } : null; }
+      $("raw-res").textContent = `HTTP ${status} ${res.statusText}\n\n${pretty(body)}`;
+    } catch (err) {
+      $("raw-res").textContent = `No response: ${err.message}`;
+    }
+    paintPath(status, body);
+    return { status, body };
+  }
+
+  // Store
+  const fileInput = $("file"), drop = $("drop");
+  function setFile(file) {
+    if (!file) return;
+    drop.classList.add("has-file");
+    $("drop-text").textContent = `${file.name} (${file.size.toLocaleString()} bytes)`;
+    if (!$("store-id").value) $("store-id").value = file.name;
+  }
+  fileInput.addEventListener("change", () => setFile(fileInput.files[0]));
+  ["dragover", "drop"].forEach((type) => drop.addEventListener(type, (e) => {
+    e.preventDefault();
+    if (type === "drop" && e.dataTransfer.files[0]) {
+      const dt = new DataTransfer(); dt.items.add(e.dataTransfer.files[0]); fileInput.files = dt.files;
+      setFile(e.dataTransfer.files[0]);
+    }
+  }));
+
+  function toBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result).split(",")[1] || "");
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function renderMeta(target, body, extra) {
+    target.innerHTML = "";
+    const dl = document.createElement("dl");
+    [["Id", body.id], ["Size", `${body.size} bytes`], ["Created", body.created_at]].forEach(([k, v]) => {
+      const dt = document.createElement("dt"); dt.textContent = k;
+      const dd = document.createElement("dd"); dd.textContent = v;
+      dl.append(dt, dd);
+    });
+    target.append(dl);
+    if (extra) target.append(extra);
+  }
+  function renderError(target, body, status) {
+    target.innerHTML = "";
+    const p = document.createElement("p"); p.className = "error";
+    p.textContent = status === 0 ? "Could not reach the server." : (body && body.message) || `Request failed (${status}).`;
+    target.append(p);
+  }
+
+  $("store-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const file = fileInput.files[0];
+    const id = $("store-id").value.trim();
+    const out = $("store-result");
+    if (!file) { renderError(out, { message: "Choose a file first." }, -1); return; }
+    const btn = $("store-btn"); btn.disabled = true;
+    try {
+      const data = await toBase64(file);
+      const { status, body } = await call("POST", "/v1/blobs", { id, data });
+      if (status === 201) { renderMeta(out, body); $("get-id").value = body.id; }
+      else renderError(out, body, status);
+    } finally { btn.disabled = false; }
+  });
+
+  // Retrieve
+  const textExt = /\.(txt|md|json|csv|xml|html?|js|rb|css|log|ya?ml)$/i;
+  function bytesFromBase64(b64) {
+    const bin = atob(b64); const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes;
+  }
+  function sniffImage(bytes) {
+    const h = [...bytes.slice(0, 4)].map((b) => b.toString(16).padStart(2, "0")).join("");
+    if (h.startsWith("89504e47")) return "image/png";
+    if (h.startsWith("ffd8ff")) return "image/jpeg";
+    if (h.startsWith("47494638")) return "image/gif";
+    if (h.startsWith("52494646")) return "image/webp";
+    return null;
+  }
+
+  $("get-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const id = $("get-id").value.trim();
+    const out = $("get-result");
+    if (!id) { renderError(out, { message: "Enter an id." }, -1); return; }
+    const btn = $("get-btn"); btn.disabled = true;
+    try {
+      const path = "/v1/blobs/" + id.split("/").map(encodeURIComponent).join("/");
+      const { status, body } = await call("GET", path);
+      if (status !== 200) { renderError(out, body, status); return; }
+
+      const bytes = bytesFromBase64(body.data);
+      const type = sniffImage(bytes) || (textExt.test(id) ? "text/plain" : "application/octet-stream");
+      const blobUrl = URL.createObjectURL(new Blob([bytes], { type }));
+      const extra = document.createElement("div"); extra.className = "preview";
+
+      if (type.startsWith("image/")) {
+        const img = document.createElement("img"); img.src = blobUrl; img.alt = `Preview of ${id}`; extra.append(img);
+      } else if (type === "text/plain") {
+        const pre = document.createElement("pre"); pre.textContent = new TextDecoder().decode(bytes.slice(0, 20000)); extra.append(pre);
+      }
+      const a = document.createElement("a");
+      a.href = blobUrl; a.download = id.split("/").pop(); a.textContent = "Download file";
+      const p = document.createElement("p"); p.append(a); extra.append(p);
+      renderMeta(out, body, extra);
+    } finally { btn.disabled = false; }
+  });
+})();
+</script>
+</body>
+</html>
